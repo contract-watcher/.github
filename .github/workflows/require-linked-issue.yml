@@ -1,0 +1,53 @@
+name: Require linked issue
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+jobs:
+  check-linked-issue:
+    name: Require linked issue
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check linked issue
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const pullRequest = context.payload.pull_request;
+
+            if (!pullRequest) {
+              core.setFailed('This workflow must be called for a pull request.');
+              return;
+            }
+
+            const { repository } = await github.graphql(`
+              query($owner: String!, $repo: String!, $number: Int!) {
+                repository(owner: $owner, name: $repo) {
+                  pullRequest(number: $number) {
+                    closingIssuesReferences(first: 1) {
+                      totalCount
+                    }
+                  }
+                }
+              }
+            `, {
+              ...context.repo,
+              number: pullRequest.number
+            });
+
+            const count =
+              repository.pullRequest.closingIssuesReferences.totalCount;
+
+            if (count === 0) {
+              core.setFailed(
+                'Link at least one issue through Development or add "Closes #..." to the pull request description.'
+              );
+              return;
+            }
+
+            core.info(`Linked issues: ${count}`);
